@@ -22,10 +22,11 @@ __email__ = "dachuy@gmail.com"
 __status__ = "Production"
 
 
-import httplib, urllib
+import requests
 from urlparse import urlparse
 from xml.dom import pulldom
 import re
+import base64
 
 try:
     import json
@@ -265,9 +266,17 @@ class StardogClient(object):
         if method not in ["POST", "GET"]:
             raise Exception("Invalid HTTP method: %s" % method)
         self._method = method
+        
+    def set_credentials(self, user, password):
+        """
+        Set user credentials for restricted endpoints
+        """
+        self._http_headers['Authorization'] = "Basic " + base64.encodestring("%s:%s" % (user, password))
 
     def __update_connection_string(self):
-        self._http_headers['SD-Connection-String'] = "reasoning=%s;kb=%s;persist=sync" % (self._reasoning, self._database)
+        # removed persist=sync, no longer needed in latest stardog releases
+        #self._http_headers['SD-Connection-String'] = "reasoning=%s;kb=%s;persist=sync" % (self._reasoning, self._database)
+        self._http_headers['SD-Connection-String'] = "reasoning=%s;kb=%s" % (self._reasoning, self._database)
 
     def query(self, sparql_query):
         """
@@ -276,19 +285,14 @@ class StardogClient(object):
         if self._database == None:
             raise Exception("Database undefined")
 
-        conn = httplib.HTTPConnection(self._server_hostname, self._server_port)
         params = {
             "query" : sparql_query
         }
         query_path = "/%s/query" % self._database
 
-        conn.request(self._method, query_path, urllib.urlencode(params), self._http_headers)
-        response = conn.getresponse()
-        if response.status != 200:
-            raise Exception("Request failed: %s" % response.read())
-
+        results = requests.request(method=self._method, url=self._server_url+query_path, params=params, headers=self._http_headers)
         parser = ResultParser.get_parser(self._result_type)
-        return parser(response)
+        return parser(results.raw)
 
 class ResultParser(object):
 
